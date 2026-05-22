@@ -8,7 +8,8 @@ dependencies:
   - python=3.8.18
   - pip=23.3.1
   - ffmpeg=4.2.2
-  - pillow=10.2.0
+  - pillow
+  - wheel
   - typing_extensions=4.9.0
   - pytorch::pytorch=2.0.0
   - pytorch::torchvision=0.15.0
@@ -30,9 +31,10 @@ dependencies:
     - plyfile
     - opencv-python
     - dearpygui
-    - gdown
+    - kornia
     - numpy
     - matplotlib
+    - pyexr
     - submodules/diff-surfel-rasterization
     - submodules/simple-knn
     - submodules/raytracing

@@ -9,6 +9,8 @@ diff-surfel-rasterization-broken
 **__pycache__**
 *.png
 *.out
+*.so
+eigen*
 eval
 *.npz
 **/tmp

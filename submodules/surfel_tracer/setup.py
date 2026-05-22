@@ -1,13 +1,34 @@
 import os
+import subprocess
+import sys
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 _src_path = os.path.dirname(os.path.abspath(__file__))
 
+class CMakeExtensionBuild(BuildExtension):
+    def run(self):
+        build_directory = os.path.join(_src_path, 'build')
+        os.makedirs(build_directory, exist_ok=True)
+        
+        cmake_args = ['cmake', '..']
+        
+        cc = os.environ.get('CC')
+        cxx = os.environ.get('CXX')
+        if cc:
+            cmake_args.append(f'-DCMAKE_C_COMPILER={cc}')
+            cmake_args.append(f'-DCMAKE_CUDA_HOST_COMPILER={cc}')
+        if cxx:
+            cmake_args.append(f'-DCMAKE_CXX_COMPILER={cxx}')
+            
+        subprocess.check_call(cmake_args, cwd=build_directory)
+        subprocess.check_call(['make', f'-j{os.cpu_count()}'], cwd=build_directory)
+        super().run()
+
 nvcc_flags = [
     '-O3', '-std=c++17',
     "--expt-extended-lambda",
-	"--expt-relaxed-constexpr",
+    "--expt-relaxed-constexpr",
     '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__',
 ]
 
@@ -16,7 +37,6 @@ if os.name == "posix":
 elif os.name == "nt":
     c_flags = ['/O2', '/std:c++17']
 
-    # find cl.exe
     def find_cl_path():
         import glob
         for edition in ["Enterprise", "Professional", "BuildTools", "Community"]:
@@ -24,23 +44,25 @@ elif os.name == "nt":
             if paths:
                 return paths[0]
 
-    # If cl.exe is not on path, try to find it.
-    if os.system("where cl.exe >nul 2>nul") != 0:
-        cl_path = find_cl_path()
-        if cl_path is None:
-            raise RuntimeError("Could not locate a supported Microsoft Visual C++ installation")
-        os.environ["PATH"] += ";" + cl_path
+        if os.system("where cl.exe >nul 2>nul") != 0:
+            cl_path = find_cl_path()
+            if cl_path is None:
+                raise RuntimeError("Could not locate a supported Microsoft Visual C++ installation")
+            os.environ["PATH"] += ";" + cl_path
 
-'''
-Usage:
-python setup.py build_ext --inplace # build extensions locally, do not install (only can be used from the parent directory)
-python setup.py install # build extensions and install (copy) to PATH.
-pip install . # ditto but better (e.g., dependency & metadata handling)
-python setup.py develop # build extensions and install (symbolic) to PATH.
-pip install -e . # ditto but better (e.g., dependency & metadata handling)
-'''
+include_directories = [
+    os.path.join(_src_path, 'include'),
+    os.path.join(_src_path, "build"),
+    os.path.join(_src_path, 'include', 'optix'),
+    os.path.join(_src_path, 'include', 'glm'),
+]
+
+conda_prefix = os.environ.get('CONDA_PREFIX')
+if conda_prefix:
+    include_directories.append(os.path.join(conda_prefix, 'include'))
+
 setup(
-    name='surfel_tracer', # package name, import this to use python API
+    name='surfel_tracer',
     version='0.1.0',
     description='2D Gaussian RayTracer',
     author='Chun Gu',
@@ -48,17 +70,12 @@ setup(
     packages=['surfel_tracer'],
     ext_modules=[
         CUDAExtension(
-            name='surfel_tracer._C', # extension name, import this to use CUDA API
+            name='surfel_tracer._C',
             sources=[os.path.join(_src_path, 'src', f) for f in [
                 'bvh.cu',
                 'bindings.cu',
             ]],
-            include_dirs=[
-                os.path.join(_src_path, 'include'),
-                os.path.join(_src_path, "build"),
-                os.path.join(_src_path, 'include', 'optix'),
-                os.path.join(_src_path, 'include', 'glm'),
-            ],
+            include_dirs=include_directories,
             extra_compile_args={
                 'cxx': c_flags,
                 'nvcc': nvcc_flags,
@@ -66,14 +83,14 @@ setup(
         ),
     ],
     cmdclass={
-        'build_ext': BuildExtension,
+        'build_ext': CMakeExtensionBuild,
     },
     install_requires=[
         'ninja',
         'trimesh',
         'opencv-python',
         'torch',
-        'numpy ',
+        'numpy',
         'tqdm',
         'dearpygui',
     ],
